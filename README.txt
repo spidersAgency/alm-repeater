@@ -2,13 +2,13 @@
 
 Contributors: dcooney
 Author: Darren Cooney
-Author URI: http://connekthq.com/
-Plugin URI: http://connekthq.com/ajax-load-more/custom-repeaters/
+Author URI: https://connekthq.com/
+Plugin URI: https://connekthq.com/ajax-load-more/add-ons/custom-repeaters/
 Requires at least: 3.6.1
-Tested up to: 4.2.2
+Tested up to: 4.4.2
 Stable tag: trunk
-Homepage: http://connekthq.com/ajax-load-more/
-Version: 2.3.1
+Homepage: https://connekthq.com/ajax-load-more/
+Version: 2.4.2
 
 == Copyright ==
 Copyright 2015 Darren Cooney, Connekt Media
@@ -47,6 +47,16 @@ http://connekthq.com/ajax-load-more/custom-repeaters/
 
 
 == Changelog ==
+
+= 2.4.2 =
+* UPDATE - Adding support new Layouts add-on. ALM 2.9 is required.
+
+= 2.4.1 =
+* UPDATE - Security fix for Ajax Load More 2.8.1.2
+
+= 2.4 =
+* NEW - Adding multisite support for repeater templates - if using a multisite, please deactivate then re-activate Ajax Load More - Custom Repeaters v2.
+* NEW - Completely rebuilt update script for repeater templates to be more efficient and integrate with multisite installations.
 
 = 2.3.1 =
 * UPDATE - Updating plugin update script. Users are now required to input a license key to receive updates directly within the WP Admin. Please contact us for information regarding legacy license keys.

@@ -6,53 +6,84 @@ Description: Ajax Load More extension to allow for unlimited repeater templates.
 Author: Darren Cooney
 Twitter: @KaptonKaos
 Author URI: http://connekthq.com
-Version: 2.3.1
+Version: 2.4.2
 License: GPL
 Copyright: Darren Cooney & Connekt Media
-
 */
+
 
 
 define('ALM_UNLIMITED_PATH', plugin_dir_path(__FILE__));
 define('ALM_UNLIMITED_REPEATER_PATH', plugin_dir_path(__FILE__) . 'repeaters/');
 define('ALM_UNLIMITED_URL', plugins_url('', __FILE__));
-define('ALM_UNLIMITED_VERSION', '2.3.1');
-define('ALM_UNLIMITED_RELEASE', 'July 5, 2015');
+define('ALM_UNLIMITED_VERSION', '2.4.2');
+define('ALM_UNLIMITED_RELEASE', 'February 16, 2016');
 
 
 
 /*
 *  alm_unlimited_install
-*  Createtables for ALM Unlimited
+*  
+*  Activation hook
+*  Create tables for Custom Repeaters
 *
 *  @since 2.0
+*  @updated 2.4
 */
 
-function alm_unlimited_install() {   
+function alm_unlimited_install($network_wide) {	   
    //if Ajax Load More is activated
    if(is_plugin_active('ajax-load-more/ajax-load-more.php')){	
-   	global $wpdb;	
-   	$table_name = $wpdb->prefix . "alm_unlimited";	
-   	   	
-   	
-   	//Create table, if it doesn't already exist.	
-   	if($wpdb->get_var("SHOW TABLES LIKE '$table_name'") != $table_name) {	
-   		$sql = "CREATE TABLE $table_name (
-   			id mediumint(9) NOT NULL AUTO_INCREMENT,
-   			name text NOT NULL,
-   			repeaterDefault longtext NOT NULL,
-   			alias TEXT NOT NULL,
-   			pluginVersion text NOT NULL,
-   			UNIQUE KEY id (id)
-   		);";		
-   		require_once( ABSPATH . 'wp-admin/includes/upgrade.php' );
-   		dbDelta( $sql );
-   	}   	 	              
+	   	   
+	   global $wpdb;
+	   add_option( "alm_unlimited_version", ALM_UNLIMITED_VERSION ); // Add to WP Option tbl	
+		
+	   if ( is_multisite() && $network_wide ) {      
+	      
+	      // Get all blogs in the network and activate plugin on each one
+	      $blog_ids = $wpdb->get_col( "SELECT blog_id FROM $wpdb->blogs" );
+	      foreach ( $blog_ids as $blog_id ) {
+	         switch_to_blog( $blog_id );
+	         alm_unlimited_create_table();
+	         restore_current_blog();
+	      }
+	      
+	   } else {
+   	   
+	      alm_unlimited_create_table();
+	      
+	   }  
+	   	 	              
 	}else{
-   	die('You must install and activate Ajax Load More before installing the Unlimited Repeaters Add-on.');
-	}	
+		
+   	die('You must install and activate Ajax Load More before installing the Custom Repeaters Add-on.');
+   	
+	}		
 }
 register_activation_hook( __FILE__, 'alm_unlimited_install' );
+add_action( 'wpmu_new_blog', 'alm_unlimited_install' );
+
+/* Create table function */
+function alm_unlimited_create_table(){	
+	
+	global $wpdb;	
+	$table_name = $wpdb->prefix . "alm_unlimited";
+	
+	//Create table, if it doesn't already exist.	
+	if($wpdb->get_var("SHOW TABLES LIKE '$table_name'") != $table_name) {	
+		$sql = "CREATE TABLE $table_name (
+			id mediumint(9) NOT NULL AUTO_INCREMENT,
+			name text NOT NULL,
+			repeaterDefault longtext NOT NULL,
+			alias TEXT NOT NULL,
+			pluginVersion text NOT NULL,
+			UNIQUE KEY id (id)
+		);";		
+		require_once( ABSPATH . 'wp-admin/includes/upgrade.php' );
+		dbDelta( $sql );
+	} 
+	
+}
 
 
 
@@ -62,56 +93,90 @@ if( !class_exists('ALMUnlimitedRepeaters') ):
    		add_action( 'alm_unlimited_repeaters', array(&$this, 'alm_unlimited_add_ons' ));
    		add_action( 'alm_get_unlimited_repeaters', array(&$this, 'alm_get_unlimited_add_ons' ));
    		add_action( 'alm_unlimited_installed', array(&$this, 'alm_is_unlimited_installed' ));		
-   		add_action( 'admin_init', array(&$this, 'alm_update_unlimited' ));
+   		add_action( 'plugins_loaded', array(&$this, 'alm_unlimited_update' ));
          add_action( 'alm_unlimited_settings', array(&$this, 'alm_unlimited_settings'));	
    		
-   		// Ajax calls
-   		add_action( 'admin_head', array(&$this, 'alm_unlimited_admin_vars' ));		
+   		// Ajax actions
          add_action( 'wp_ajax_alm_unlimited_create', array(&$this, 'alm_unlimited_create' )); // Ajax create template
-         add_action( 'wp_ajax_nopriv_alm_unlimited_create', array(&$this, 'alm_unlimited_create' )); // Ajax create template
          add_action( 'wp_ajax_alm_unlimited_delete', array(&$this, 'alm_unlimited_delete' )); // Ajax delete template
-         add_action( 'wp_ajax_nopriv_alm_unlimited_delete', array(&$this, 'alm_unlimited_delete' )); // Ajax delete template
    		
    		//Load text domain
    		load_plugin_textdomain( 'ajax-load-more-unlimited', false, dirname( plugin_basename( __FILE__ ) ) . '/lang/' );
    	}
-   		
-   		
-   		
-      /*
-      *  alm_unlimited_admin_vars
-      *  Create admin variables and ajax nonce for creating templates
-      *
-      *  @since 2.0
-      */
-      
-      function alm_unlimited_admin_vars() { ?>
-          <script type='text/javascript'>
-      	 /* <![CDATA[ */
-          var alm_unlimited_admin_localize = <?php echo json_encode( array( 
-              'ajax_admin_url' => admin_url( 'admin-ajax.php' ),
-              'alm_unlimited_admin_nonce' => wp_create_nonce( 'alm_unlimited_nonce' )
-          )); ?>
-          /* ]]> */
-          </script>
-      <?php }
    	
    	
    	
       /**
-      * alm_update_unlimited
+      * alm_unlimited_update
       * Update repeaters if the database version of the repeater doesn't match the current plugin version. 
       * Check by version numbers
       *
       * @since 2.0
+      * @updated 2.4
       */
       
-      function alm_update_unlimited() {  
-      	 global $wpdb;
-      	 $table_name = $wpdb->prefix . "alm_unlimited";	
-      	 $rows = $wpdb->get_results("SELECT * FROM $table_name"); // Get all data  
-          if($rows){
-             // Loop $rows
+      function alm_unlimited_update() {  
+	      
+	      if(!get_option( 'alm_unlimited_version')){ // Add to WP options table if it does not exist
+				add_option( 'alm_unlimited_version', ALM_UNLIMITED_VERSION ); 
+			}	
+			
+			$alm_unlimited_installed_ver = get_option( "alm_unlimited_version" ); // Get value from WP Option tbl
+			if ( $alm_unlimited_installed_ver != ALM_UNLIMITED_VERSION ) {
+				$this->alm_unlimited_run_update();	
+			} 
+			
+      }
+      
+      
+      
+		/**
+		* alm_unlimited_run_update
+		* Run the update on all 'blogs'
+		*
+		* @since 2.4
+      * @updated 2.4
+		*/
+		
+		function alm_unlimited_run_update(){	
+			global $wpdb;	
+   
+		   if ( is_multisite()) {           
+		   	$blog_ids = $wpdb->get_col( "SELECT blog_id FROM $wpdb->blogs" );   	
+		      
+		   	// Loop all blogs and run update routine   	
+		      foreach ( $blog_ids as $blog_id ) {
+		         switch_to_blog( $blog_id );
+		         $this->alm_update_unlimited_template_files();
+		         restore_current_blog();
+		      }
+		      
+		   } else {
+		      	$this->alm_update_unlimited_template_files();
+		   }
+		      
+		   update_option( "alm_unlimited_version", ALM_UNLIMITED_VERSION ); // Update the WP Option tbl with the new version num
+		   
+		}
+		
+		
+		
+		/**
+		* alm_update_unlimited_template_files
+		* Update routine for Custom Repeater templates		
+		*
+		* @since 2.4
+		*/
+		
+		function alm_update_unlimited_template_files(){
+			
+			global $wpdb;
+			$table_name = $wpdb->prefix . "alm_unlimited";
+			$blog_id = $wpdb->blogid;			   
+						
+      	$rows = $wpdb->get_results("SELECT * FROM $table_name"); // Get all templates ($rows) from database
+      	
+         if($rows){  // Loop $rows
              foreach( $rows as $row ) {
       			$repeater = $row->name;
                $version = $row->pluginVersion;	    
@@ -121,24 +186,37 @@ if( !class_exists('ALMUnlimitedRepeaters') ):
          		   $data = $wpdb->get_var("SELECT repeaterDefault FROM $table_name WHERE name = '$repeater'");
          			$f = ALM_UNLIMITED_REPEATER_PATH. ''.$repeater.'.php'; // File
          			
+         			if($blog_id > 1){
+						   $dir = ALM_UNLIMITED_PATH. 'repeaters/'. $blog_id;
+					   	if( !is_dir($dir) ){
+					         mkdir($dir);
+					      }
+							$f = ALM_UNLIMITED_PATH. 'repeaters/'. $blog_id .'/'.$repeater .'.php';
+						}else{
+							$f = ALM_UNLIMITED_PATH. 'repeaters/'.$repeater .'.php';
+						}
+         			
          			try {
                      $o = fopen($f, 'w+'); //Open file
                      if ( !$o ) {
-                       throw new Exception(__('[Ajax Load More] Unable to open the default repeater template (/core/repeater/default.php).', ALM_NAME));
+                       throw new Exception(__('[Ajax Load More] Unable to open Custom Repeater template - '.$f.'', ALM_NAME));
                      } 
                      $w = fwrite($o, $data); //Save the file
                      if ( !$w ) {
-                       throw new Exception(__('[Ajax Load More] Unable to save the default repeater (/core/repeater/default.php).', ALM_NAME));
+                       throw new Exception(__('[Ajax Load More] Unable to save Custom Repeater template - '.$f.'', ALM_NAME));
                      } 
                      fclose($o); //now close it               
                   } catch ( Exception $e ) {
-                     echo '<script>console.log("' .$e->getMessage(). '");</script>';
+                     // Display error message in console.
+                     if(!isset($options['_alm_error_notices']) || $options['_alm_error_notices'] == '1'){
+                        echo '<script>console.log("' .$e->getMessage(). '");</script>';
+                     }
                   } 
                   
          	   }
             }
          }
-      }	
+		}
    		
    	
    	
@@ -238,14 +316,21 @@ if( !class_exists('ALMUnlimitedRepeaters') ):
          			         <label class="template-title" for="id-<?php echo $repeater_file; ?>">
          			            <?php _e('Template ID', ALM_NAME); ?>:
                            </label>
-                           <input type="text" class="disabled-input" id="id-<?php echo $repeater_file; ?>" value="<?php echo $repeater_file; ?>" disabled="disabled">
+                           <input type="text" class="disabled-input" id="id-<?php echo $repeater_file; ?>" value="<?php echo $repeater_file; ?>" readonly="readonly">
          				   </div>
                         				
                         <label class="template-title" for="template-<?php echo $repeater_file; ?>">
                            <?php _e('Enter the HTML and PHP code for this template', ALM_NAME); ?>:
                         </label>
-            				<?php         
-               				$filename = plugin_dir_path(__FILE__).'repeaters/'.$repeater_file.'.php';
+            				<?php    
+	            				$blog_id = $wpdb->blogid; 
+	            				 
+									if($blog_id > 1){	
+										$filename = ALM_UNLIMITED_REPEATER_PATH. '' . $blog_id .'/'. $repeater_file .'.php'; // File
+									}else{
+										$filename = ALM_UNLIMITED_REPEATER_PATH. ''. $repeater_file. '.php';			
+									}   								
+               				
                				$handle = fopen ($filename, "r");
                				$content = '';
                				if(filesize ($filename) != 0){
@@ -254,6 +339,9 @@ if( !class_exists('ALMUnlimitedRepeaters') ):
                				fclose ($handle);
             				?> 
             				<div class="textarea-wrap">
+               				
+               				<?php do_action('alm_get_layouts'); // Layouts - Template Selection ?> 
+            			      
             					<textarea rows="10" id="<?php echo $repeater_file; ?>" class="_alm_repeater"><?php if($content) echo $content; ?></textarea>
             					<script>
                               var editor_<?php echo $repeater_file; ?> = CodeMirror.fromTextArea(document.getElementById("<?php echo $repeater_file; ?>"), {
@@ -318,10 +406,10 @@ if( !class_exists('ALMUnlimitedRepeaters') ):
                   // Run ajax
          		   $.ajax({
             			type: 'POST',
-            			url: alm_unlimited_admin_localize.ajax_admin_url,
+            			url: alm_admin_localize.ajax_admin_url,
             			data: {
             				action: 'alm_unlimited_create',
-            				nonce: alm_unlimited_admin_localize.alm_unlimited_admin_nonce,
+            				nonce: alm_admin_localize.alm_admin_nonce,
             			},
             			dataType: "JSON",
             			success: function(data) {                     
@@ -366,11 +454,11 @@ if( !class_exists('ALMUnlimitedRepeaters') ):
             		item.addClass('deleting');    
          		   $.ajax({
             			type: 'POST',
-            			url: alm_unlimited_admin_localize.ajax_admin_url,
+            			url: alm_admin_localize.ajax_admin_url,
             			data: {
             				action: 'alm_unlimited_delete',
             				repeater: repeater,
-            				nonce: alm_unlimited_admin_localize.alm_unlimited_admin_nonce
+            				nonce: alm_admin_localize.alm_admin_nonce
             			},
             			dataType: "html",
             			success: function(data) {	
@@ -411,49 +499,69 @@ if( !class_exists('ALMUnlimitedRepeaters') ):
        */
       
        function alm_unlimited_create(){	
-         $nonce = $_POST["nonce"];
-         // Check our nonce, if they don't match then bounce!
-         if (! wp_verify_nonce( $nonce, 'alm_unlimited_nonce' ))
-            die('Get Bounced!');       
+          
+         if (current_user_can( 'edit_theme_options' )){   
          
-         global $wpdb;
-         $table_name = $wpdb->prefix . "alm_unlimited";      
-         $count = floatval($wpdb->get_var( "SELECT COUNT(*) FROM $table_name" ));
-         $count = $count+1;
-         
-         $defaultVal = '<?php // '.__('Enter your template code here', ALM_NAME).'.  ?>';
-         
-         
-         // Insert into DB
-         $wpdb->insert($table_name , array(
-            'name' => 'temp', 
-            'repeaterDefault' => $defaultVal, 
-            'alias' => '', 
-            'pluginVersion' => ALM_UNLIMITED_VERSION
-         ));  
-              
-         $id = $wpdb->insert_id; // Get new primary key value (id)
-         $data_new = array('name' => 'template_'.$id);
-         $data_previous = array('name' => 'temp');
-         $wpdb->update($table_name , $data_new, $data_previous);
+            global $wpdb;
+            $table_name = $wpdb->prefix . "alm_unlimited";   
+            $blog_id = $wpdb->blogid;
+            
+            $nonce = $_POST["nonce"];
+            // Check our nonce, if they don't match then bounce!
+            if (! wp_verify_nonce( $nonce, 'alm_repeater_nonce' ))
+               die('Error - unable to verify nonce, please try again.');    
+               
+            $count = floatval($wpdb->get_var( "SELECT COUNT(*) FROM $table_name" ));
+            $count = $count+1;
+            
+            $defaultVal = '<?php // '.__('Enter your template code here', ALM_NAME).'.  ?>';         
             
             
-         // Set new template name      
-         $template = 'template_'.$id;     
-         
-         
-         // Create file on server      
-         $f = ALM_UNLIMITED_REPEATER_PATH . '' . $template; // File
-         $file = fopen( $f.'.php' , "w" ) or die ("Error opening file"); // It doesn't exist, so create it.
-         $w = fwrite($file, $defaultVal) or die("Error writing file");
-         
-         $return = '';
-         $return["id"] = $template;
-         $return["alias"] = __('Template #', ALM_NAME) . '' .$count;
-         $return["defaultVal"] = $defaultVal;
-         echo json_encode($return);      
-         
-         die();
+            // Insert into DB
+            $wpdb->insert($table_name , array(
+               'name' => 'temp', 
+               'repeaterDefault' => $defaultVal, 
+               'alias' => '', 
+               'pluginVersion' => ALM_UNLIMITED_VERSION
+            ));  
+            
+                 
+            $id = $wpdb->insert_id; // Get new primary key value (id)
+            $data_new = array('name' => 'template_'.$id);
+            $data_previous = array('name' => 'temp');
+            $wpdb->update($table_name , $data_new, $data_previous);
+               
+               
+            // Set new template name      
+            $template = 'template_'.$id;    
+            
+            
+            // Create file on server               
+            if($blog_id > 1){
+   			   $dir = ALM_UNLIMITED_REPEATER_PATH. ''. $blog_id;
+   		   	if( !is_dir($dir) ){
+   		         mkdir($dir);
+   		      }
+   				$f = ALM_UNLIMITED_REPEATER_PATH. ''. $blog_id .'/'.$template .'.php';
+   			}else{
+   				$f = ALM_UNLIMITED_REPEATER_PATH. ''.$template .'.php';
+   			}
+            
+            $file = fopen( $f, "w" ) or die ("Error opening file"); // It doesn't exist, so create it.
+            $w = fwrite($file, $defaultVal) or die("Error writing file");
+            
+            $return = '';
+            $return["id"] = $template;
+            $return["alias"] = __('Template #', ALM_NAME) . '' .$count;
+            $return["defaultVal"] = $defaultVal;
+            echo json_encode($return);      
+            
+            die();      
+		
+      	}else {
+      		echo __('You don\'t belong here.', ALM_NAME);
+      	}
+      	
        }	 
        
        
@@ -465,32 +573,47 @@ if( !class_exists('ALMUnlimitedRepeaters') ):
        */
       
        function alm_unlimited_delete(){	
-         $nonce = $_POST["nonce"];
-         $template = Trim(stripslashes($_POST["repeater"])); // Repeater name for deletion
-         
-         // Check our nonce, if they don't match then bounce!
-         if (! wp_verify_nonce( $nonce, 'alm_unlimited_nonce' ))
-            die('Get Bounced!');         
-         
-         global $wpdb;
-         $table_name = $wpdb->prefix . "alm_unlimited";      
-         
-         $wpdb->delete($table_name, array( 'name' => $template )); // delete from db
-         
-         
-         // Delete file from server
-         $file_to_delete = ALM_UNLIMITED_REPEATER_PATH . '' . $template . '.php'; // File
-         if (file_exists($file_to_delete)) {
-             unlink($file_to_delete); // Delete now
-         } 
-         // See if it exists again to be sure it was removed
-         if (file_exists($file_to_delete)) {
-             echo __('The template could not be deleted.', ALM_NAME);
-         } else {
-             echo __('Template deleted successfully.', ALM_NAME);
-         }
-         
-         die();
+          
+         if (current_user_can( 'edit_theme_options' )){
+            
+   	      global $wpdb;
+            $table_name = $wpdb->prefix . "alm_unlimited"; 
+            $blog_id = $wpdb->blogid;
+            
+            $nonce = $_POST["nonce"];
+            $template = Trim(stripslashes($_POST["repeater"])); // Repeater name for deletion
+            
+            // Check our nonce, if they don't match then bounce!
+            if (! wp_verify_nonce( $nonce, 'alm_repeater_nonce' ))
+               die('Error - unable to verify nonce, please try again.');        
+               
+            
+            $wpdb->delete($table_name, array( 'name' => $template )); // delete from db
+            
+            
+            // Delete file from server         
+            if($blog_id > 1){
+   				$file_to_delete = ALM_UNLIMITED_REPEATER_PATH. ''. $blog_id .'/'.$template .'.php';
+   			}else{
+   				$file_to_delete = ALM_UNLIMITED_REPEATER_PATH. ''.$template .'.php';
+   			} 
+            
+            if (file_exists($file_to_delete)) {
+                unlink($file_to_delete); // Delete now
+            }
+             
+            // See if it exists again to be sure it was removed
+            if (file_exists($file_to_delete)) {
+                echo __('The template could not be deleted.', ALM_NAME);
+            } else {
+                echo __('Template deleted successfully.', ALM_NAME);
+            }
+            
+            die();         
+		
+      	}else {
+      		echo __('You don\'t belong here.', ALM_NAME);
+      	}
       }	 
        
        
@@ -527,99 +650,6 @@ if( !class_exists('ALMUnlimitedRepeaters') ):
    	return $new;
    }
    
-   
-   /*
-   *  alm_unlimited_activate_license
-   *  Activate the license
-   *
-   *  @since 2.4
-   */
-   
-   function alm_unlimited_activate_license() {
-   
-   	// listen for our activate button to be clicked
-   	if( isset( $_POST['alm_unlimited_license_activate'] ) ) {
-   
-   		// run a quick security check 
-   	 	if( ! check_admin_referer( 'alm_unlimited_license_nonce', 'alm_unlimited_license_nonce' ) ) 	
-   			return; // get out if we didn't click the Activate button
-   
-   		// retrieve the license from the database
-   		$license = trim( get_option( 'alm_unlimited_license_key' ) );
-   
-   		// data to send in our API request
-   		$api_params = array( 
-   			'edd_action'=> 'activate_license', 
-   			'license' 	=> $license, 
-   			'item_id'   => ALM_UNLIMITED_ITEM_NAME, // the name of our product in EDD
-   			'url'       => home_url()
-   		);
-   		
-   		// Call the custom API.
-   		$response = wp_remote_get( add_query_arg( $api_params, ALM_STORE_URL ), array( 'timeout' => 15, 'sslverify' => false ) );
-   
-   		// make sure the response came back okay
-   		if ( is_wp_error( $response ) )
-   			return false;
-   
-   		// decode the license data
-   		$license_data = json_decode( wp_remote_retrieve_body( $response ) );
-   		
-   		// $license_data->license will be either "valid" or "invalid"
-   
-   		update_option( 'alm_unlimited_license_status', $license_data->license );
-   
-   	}
-   }
-   add_action('admin_init', 'alm_unlimited_activate_license');
-   
-   
-   
-   /*
-   *  alm_unlimited_deactivate_license
-   *  Deactivate license
-   *
-   *  @since 2.4
-   */
-   
-   function alm_unlimited_deactivate_license() {
-   
-   	// listen for our activate button to be clicked
-   	if( isset( $_POST['alm_unlimited_license_deactivate'] ) ) {
-   
-   		// run a quick security check 
-   	 	if( ! check_admin_referer( 'alm_unlimited_license_nonce', 'alm_unlimited_license_nonce' ) ) 	
-   			return; // get out if we didn't click the Activate button
-   
-   		// retrieve the license from the database
-   		$license = trim( get_option( 'alm_unlimited_license_key' ) );
-   
-   		// data to send in our API request
-   		$api_params = array( 
-   			'edd_action'=> 'deactivate_license', 
-   			'license' 	=> $license, 
-   			'item_id'   => ALM_UNLIMITED_ITEM_NAME, // the name of our product in EDD
-   			'url'       => home_url()
-   		);
-   		
-   		// Call the custom API.
-   		$response = wp_remote_get( add_query_arg( $api_params, ALM_STORE_URL ), array( 'timeout' => 15, 'sslverify' => false ) );
-   
-   		// make sure the response came back okay
-   		if ( is_wp_error( $response ) )
-   			return false;
-   
-   		// decode the license data
-   		$license_data = json_decode( wp_remote_retrieve_body( $response ) );
-   		
-   		// $license_data->license will be either "deactivated" or "failed"
-   		if( $license_data->license == 'deactivated' )
-   			delete_option( 'alm_unlimited_license_status' );
-   
-   	}
-   }
-   add_action('admin_init', 'alm_unlimited_deactivate_license');	
-   
    	
    	
    /*
@@ -648,7 +678,6 @@ endif; // class_exists check
 
 /* Software Licensing */
 
-define('ALM_UNLIMITED_ITEM_NAME', '3118' ); // EDD CONSTANT - Item Name
 if( !class_exists( 'EDD_SL_Plugin_Updater' ) ) {
 	include( dirname( __FILE__ ) . '/vendor/EDD_SL_Plugin_Updater.php' );
 }

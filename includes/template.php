@@ -24,7 +24,7 @@
 	         <label class="template-title" for="id-<?php echo $id; ?>">
 	            <?php _e('Template ID', ALM_NAME); ?>:
             </label>
-            <input type="text" class="disabled-input" id="id-<?php echo $id; ?>" value="<?php echo $id; ?>" disabled="disabled">
+            <input type="text" class="disabled-input" id="id-<?php echo $id; ?>" value="<?php echo $id; ?>" readonly="readonly">
 		   </div>
          				
          <label class="template-title" for="template-<?php echo $id; ?>">
@@ -32,6 +32,7 @@
          </label>
          
 			<div class="textarea-wrap">
+   			<?php include( ALM_PATH . 'admin/includes/components/layout-list.php'); ?>
 				<textarea rows="10" id="<?php echo $id; ?>" class="_alm_repeater"><?php echo $defaultVal; ?></textarea>
 				<script>
                var editor_<?php echo $id; ?> = CodeMirror.fromTextArea(document.getElementById("<?php echo $id; ?>"), {
