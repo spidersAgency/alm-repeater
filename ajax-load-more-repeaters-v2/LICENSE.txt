@@ -1,0 +1,14 @@
+Contributors: dcooney
+Author: Darren Cooney
+Author URI: http://connekthq.com/
+Plugin URI: http://connekthq.com/ajax-load-more/
+Homepage: http://connekthq.com/ajax-load-more/custom-repeaters/
+License: GPL
+
+== License ==
+
+This premium add-on has a multi-site license and you may use this add-on with multiple website projects.
+
+You may also include this add-on within a premium (not free) WP theme or Plugin.
+
+Distribution of this add-on within a FREE WordPress theme is strictly prohibited.
